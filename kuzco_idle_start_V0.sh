@@ -1,32 +1,32 @@
 #!/bin/bash
 
-# 设置变量
-WORKER_ID=***  # 您的worker_id
-CODE_ID=***  # 您的code_id
-KUZCO_PATH="/usr/local/bin/kuzco"    # 假设kuzco在用户根目录下
+# Set variables
+WORKER_ID=***  # Your worker_id
+CODE_ID=***  # Your code_id
+KUZCO_PATH="/usr/local/bin/kuzco"    # Assume kuzco is in the user's root directory
 LOG_FILE="$HOME/kuzco_monitor.log"
-CPU_THRESHOLD=30            # CPU使用率的阈值
-CHECK_INTERVAL=5            # 检查CPU使用率的时间间隔，单位秒
+CPU_THRESHOLD=30            # CPU usage threshold
+CHECK_INTERVAL=5            # Time interval to check CPU usage, in seconds
 
-# 记录日志的函数
+# Function to log messages
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
 
-# 检查kuzco是否正在运行
+# Check if kuzco is running
 is_kuzco_running() {
     pgrep -f "$KUZCO_PATH worker start --worker $WORKER_ID --code $CODE_ID" > /dev/null
 }
 
-# 启动kuzco的函数，捕获并记录输出
+# Function to start kuzco, capture and log output
 start_kuzco() {
     if ! is_kuzco_running; then
         log "Attempting to start kuzco with worker ID: $WORKER_ID and code ID: $CODE_ID"
         
-        # 启动kuzco并捕获输出
+        # Start kuzco and capture output
         nohup "$KUZCO_PATH" worker start --worker $WORKER_ID --code $CODE_ID > "$HOME/kuzco_output.log" 2>&1 &
         
-        # 等待几秒以检查进程是否启动成功
+        # Wait a few seconds to check if the process started successfully
         sleep 2
         if is_kuzco_running; then
             log "Kuzco started successfully."
@@ -39,13 +39,13 @@ start_kuzco() {
     fi
 }
 
-# 停止kuzco的函数
+# Function to stop kuzco
 stop_kuzco() {
     if is_kuzco_running; then
         log "Attempting to stop kuzco."
         pkill -f "$KUZCO_PATH worker start --worker $WORKER_ID --code $CODE_ID"
 
-        # 等待几秒以确保进程停止
+        # Wait a few seconds to ensure the process stops
         sleep 2
         if ! is_kuzco_running; then
             log "Kuzco stopped successfully."
@@ -57,18 +57,18 @@ stop_kuzco() {
     fi
 }
 
-# 获取当前CPU使用率的函数
+# Function to get current CPU usage
 get_cpu_usage() {
     top -l 1 | grep "CPU usage" | awk '{print $3}' | sed 's/%//'
 }
 
-# 主循环，实时监控CPU使用率并控制kuzco的启停
+# Main loop to monitor CPU usage and control kuzco start/stop
 while true; do
     cpu_usage=$(get_cpu_usage)
 
     log "Current CPU usage: ${cpu_usage}%"
 
-    # 根据CPU使用率决定启动或停止kuzco
+    # Decide whether to start or stop kuzco based on CPU usage
     if (( $(echo "$cpu_usage < $CPU_THRESHOLD" | bc -l) )); then
         log "CPU usage below threshold. Attempting to start kuzco."
         start_kuzco
@@ -77,6 +77,6 @@ while true; do
         stop_kuzco
     fi
 
-    # 等待指定的检查间隔
+    # Wait for the specified check interval
     sleep "$CHECK_INTERVAL"
 done

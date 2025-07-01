@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# 设置变量
-NAME="007"  # 要管理的worker名称
+# Set variables
+NAME="007"  # Worker name to manage
 
-# Worker配置函数
+# Worker configuration function
 get_worker_config() {
     local worker_name=$1
     case "$worker_name" in
@@ -41,23 +41,23 @@ get_worker_config() {
     esac
 }
 
-# 基础配置
+# Basic configuration
 KUZCO_PATH="/usr/local/bin/kuzco"
 LOG_FILE="$HOME/kuzco_monitor.log"
 OUTPUT_LOG="$HOME/kuzco_output_monitor.log"
 CPU_THRESHOLD=30
-CHECK_INTERVAL=3  # 将检查间隔从5秒改为3秒
-GPU_POWER_THRESHOLD=1  # GPU功耗阈值（瓦特），对应1W
+CHECK_INTERVAL=3  # Change the check interval from 5 seconds to 3 seconds
+GPU_POWER_THRESHOLD=1  # GPU power threshold (watts), corresponding to 1W
 DEBUG_MODE=true
 
-# 监控变量
+# Monitoring variables
 LAST_INFERENCE_TIME=$(date +%s)
 HOURLY_INFERENCE_COUNT=0
 LAST_HOUR_REPORT=$(date +%s)
-LAST_GPU_HIGH_LOAD=0  # 添加GPU高负载时间记录
-CONTINUOUS_HIGH_LOAD_THRESHOLD=30  # 持续高负载阈值（秒）
+LAST_GPU_HIGH_LOAD=0  # Add GPU high load time record
+CONTINUOUS_HIGH_LOAD_THRESHOLD=30  # Continuous high load threshold (seconds)
 
-# 从内置数据库读取worker配置
+# Read worker configuration from the built-in database
 load_worker_config() {
     local config=$(get_worker_config "$NAME")
     if [ -z "$config" ]; then
@@ -69,21 +69,21 @@ load_worker_config() {
     echo "Loaded config for worker '$NAME': WORKER_ID=$WORKER_ID, CODE_ID=$CODE_ID"
 }
 
-# 统一的日志处理函数
+# Unified log processing function
 log() {
     local message="$(date '+%Y-%m-%d %H:%M:%S') - $1"
     echo "$message"
     [ "$DEBUG_MODE" = true ] && echo "$message" >> "$LOG_FILE"
 }
 
-# 统一的进程检查函数
+# Unified process check function
 check_process() {
     local process_name=$1
     local process_pattern=$2
     pgrep -f "$process_pattern" > /dev/null
 }
 
-# 进程管理函数
+# Process management function
 manage_process() {
     local action=$1
     local process_name=$2
@@ -118,10 +118,10 @@ manage_process() {
     esac
 }
 
-# 清理旧日志
+# Clean old logs
 clean_old_logs() {
     local two_days_ago=$(date -v-2d +%s)
-    local log_files=("$LOG_FILE" "$OUTPUT_LOG" "$HOME/kuzco_output.log")
+    local log_files= তন্মokuoikuzco_output.log")
     
     for log_file in "${log_files[@]}"; do
         if [ -f "$log_file" ]; then
@@ -134,77 +134,77 @@ clean_old_logs() {
     done
 }
 
-# 获取GPU功耗（单位：瓦特）
+# Get GPU power (unit: watts)
 get_gpu_power() {
-    # 检查是否有sudo权限
+    # Check for sudo permissions
     if [ "$(id -u)" != "0" ]; then
-        log "警告: 需要sudo权限来获取GPU功耗"
+        log "Warning: sudo permission is required to get GPU power"
         return 0
     fi
 
-    # 直接使用sudo powermetrics获取GPU功耗
+    # Directly use sudo powermetrics to get GPU power
     local gpu_power_raw=$(sudo powermetrics --samplers gpu_power -n 1 2>/dev/null)
     if [ $? -ne 0 ]; then
-        log "警告: powermetrics命令执行失败，请确保有sudo权限"
+        log "Warning: powermetrics command failed, please make sure you have sudo permission"
         echo "0"
         return
     fi
 
-    # 使用更精确的正则表达式来提取GPU功耗数据
+    # Use a more precise regular expression to extract GPU power data
     local gpu_power_mw=$(echo "$gpu_power_raw" | grep -oE 'GPU Power: [0-9]+([.][0-9]+)? mW' | head -n 1 | grep -oE '[0-9]+([.][0-9]+)?')
     
-    # 验证提取的数据是否为空
+    # Verify that the extracted data is not empty
     if [ -z "$gpu_power_mw" ]; then
-        log "警告: 无法从powermetrics输出中提取GPU功耗数据"
+        log "Warning: Unable to extract GPU power data from powermetrics output"
         echo "0"
         return
     fi
 
-    # 验证并转换功耗数据
+    # Validate and convert power data
     if [[ $gpu_power_mw =~ ^[0-9]+([.][0-9]+)?$ ]]; then
         local gpu_power=$(echo "scale=3; $gpu_power_mw / 1000" | bc)
         if [ -z "$gpu_power" ]; then
-            log "警告: GPU功耗数据转换失败"
+            log "Warning: GPU power data conversion failed"
             echo "0"
         else
             echo "$gpu_power"
         fi
     else
-        log "警告: 提取的GPU功耗数据格式无效: $gpu_power_mw"
+        log "Warning: Invalid format of extracted GPU power data: $gpu_power_mw"
         echo "0"
     fi
 }
 
-# 监控kuzco输出
+# Monitor kuzco output
 monitor_kuzco_output() {
     local current_time=$(date +%s)
     
-    # 生成小时报告
+    # Generate hourly report
     if [ $((current_time - LAST_HOUR_REPORT)) -ge 3600 ]; then
         log "Hourly Report: $HOURLY_INFERENCE_COUNT inferences in the last hour"
         HOURLY_INFERENCE_COUNT=0
         LAST_HOUR_REPORT=$current_time
     fi
 
-    # 检查GPU功耗
+    # Check GPU power
     local gpu_power=$(get_gpu_power)
     log "Current GPU power: ${gpu_power}W"
 
-    # 基于GPU功耗检测推理
+    # Detect inference based on GPU power
     if (( $(echo "$gpu_power >= $GPU_POWER_THRESHOLD" | bc -l) )); then
         if [ $LAST_GPU_HIGH_LOAD -eq 0 ]; then
             LAST_GPU_HIGH_LOAD=$current_time
         elif [ $((current_time - LAST_GPU_HIGH_LOAD)) -ge $CONTINUOUS_HIGH_LOAD_THRESHOLD ]; then
-            # GPU持续高负载超过阈值，记录一次推理
+            # GPU continuous high load exceeds the threshold, record one inference
             HOURLY_INFERENCE_COUNT=$((HOURLY_INFERENCE_COUNT + 1))
             LAST_INFERENCE_TIME=$current_time
             log "Continuous high GPU load detected for ${CONTINUOUS_HIGH_LOAD_THRESHOLD}s. Total in current hour: $HOURLY_INFERENCE_COUNT"
             echo "$(date '+%Y-%m-%d %H:%M:%S') - New inference detected by continuous GPU usage. Total in current hour: $HOURLY_INFERENCE_COUNT" >> "$OUTPUT_LOG"
-            LAST_GPU_HIGH_LOAD=$current_time  # 重置计时器，避免重复计数
+            LAST_GPU_HIGH_LOAD=$current_time  # Reset the timer to avoid repeated counting
         fi
     else
         if [ $LAST_GPU_HIGH_LOAD -ne 0 ]; then
-            # GPU负载从高到低变化，记录一次推理
+            # GPU load changes from high to low, record one inference
             HOURLY_INFERENCE_COUNT=$((HOURLY_INFERENCE_COUNT + 1))
             LAST_INFERENCE_TIME=$current_time
             log "Inference detected by GPU usage. Total in current hour: $HOURLY_INFERENCE_COUNT"
@@ -213,7 +213,7 @@ monitor_kuzco_output() {
         fi
     fi
 
-    # 检查是否需要重启
+    # Check if a restart is needed
     if [ $((current_time - LAST_INFERENCE_TIME)) -ge 3600 ]; then
         log "No inference detected for over an hour. Restarting kuzco..."
         manage_process "stop" "kuzco" "$KUZCO_PATH worker start --worker $WORKER_ID --code $CODE_ID"
@@ -223,25 +223,25 @@ monitor_kuzco_output() {
         LAST_INFERENCE_TIME=$current_time
     fi
 
-    # 检查推理输出
+    # Check inference output
     if [ "$DEBUG_MODE" = true ] && [ -f "$HOME/kuzco_output.log" ]; then
-        # 获取新的推理完成次数
+        # Get the number of new inference completions
         new_inferences=$(grep -c "1 Inference finished from subscription" "$HOME/kuzco_output.log")
         if [ $new_inferences -gt 0 ]; then
             HOURLY_INFERENCE_COUNT=$((HOURLY_INFERENCE_COUNT + new_inferences))
             LAST_INFERENCE_TIME=$current_time
             log "Inference finished. Total in current hour: $HOURLY_INFERENCE_COUNT"
             echo "$(date '+%Y-%m-%d %H:%M:%S') - $new_inferences new inference(s) detected. Total in current hour: $HOURLY_INFERENCE_COUNT" >> "$OUTPUT_LOG"
-            # 清空日志文件以避免重复计数
+            # Clear the log file to avoid repeated counting
             : > "$HOME/kuzco_output.log"
         fi
     fi
 }
 
-# 初始化
+# Initialization
 load_worker_config
 
-# 主循环
+# Main loop
 while true; do
     cpu_usage=$(top -l 1 | grep "CPU usage" | awk '{print $3}' | sed 's/%//')
     log "Current CPU usage: ${cpu_usage}%"
